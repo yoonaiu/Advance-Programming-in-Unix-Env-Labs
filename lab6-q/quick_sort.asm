@@ -66,24 +66,24 @@ END_WHILE:
     mov     qword [rdi + r9*8],      r14
     mov     qword [rdi + r11*8],     r13
 
-    sub     rsp,    32
-    mov     qword [rsp + 24],       r9
-    mov     qword [rsp + 16],       r10
-    mov     qword [rsp + 8],        r11
+    sub     rsp,    24
+    mov     qword [rsp + 16],       r9
+    mov     qword [rsp + 8],       r10
+    mov     qword [rsp],           r11
 
     mov     r10,    r11
     dec     r10
     call    QUICKSORT
     
-    mov     r9,     qword [rsp + 24]
-    mov     r10,    qword [rsp + 16]
-    mov     r11,    qword [rsp + 8]
+    mov     r9,     qword [rsp + 16]
+    mov     r10,    qword [rsp + 8]
+    mov     r11,    qword [rsp]
 
     mov     r9,     r11
     inc     r9
     call    QUICKSORT
 
-    add     rsp,    32
+    add     rsp,    24
     jmp     END_QUICKSORT
 
 END_QUICKSORT:
