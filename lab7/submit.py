@@ -306,7 +306,7 @@ def task_3_asm_byte():
         mov rax, 1
         mov rdi, 1
         mov rsi, r14
-        mov rdx, 200
+        mov rdx, 69
         syscall""")
 
     # 4. if want to print a reg
