@@ -14,7 +14,7 @@ context.arch = 'amd64'
 context.os = 'linux'
 context.terminal = ['tmux', 'splitw', '-h']
 
-remote = False
+remote_bool = False
 code_bytes = b''
 start_code_address = None
 timestamp = None
@@ -29,7 +29,7 @@ pop_rdx_ret = None
 def get_init_info():
     global start_code_address, timestamp
 
-    if remote:
+    if remote_bool:
         r.recvline()
         r.recvline()
 
@@ -207,7 +207,7 @@ if __name__ == '__main__':
         r = remote("localhost", 10494)
     else:
         r = remote("up23.zoolab.org", 10494)
-        remote = True
+        remote_bool = True
 
     if type(r) != pwnlib.tubes.process.process:
         pw.solve_pow(r)
