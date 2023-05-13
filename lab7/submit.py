@@ -314,7 +314,6 @@ def task_4_asm_byte():
     global start_code_address
     sockaddr_memory_address = start_code_address + 5*0x10000 + 0x1000
     flag3_memory_address = start_code_address + 5*0x10000 + 0x8000
-    debug_memory_address = start_code_address + 6*0x10000
 
     # socket -> connect -> read from server to get flag
     # 1. sys_socket
