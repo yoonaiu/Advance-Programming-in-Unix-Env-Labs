@@ -11,14 +11,10 @@ void errquit(const char *msg) {
 	exit(-1);
 }
 
-int
-main(int argc, char *argv[]) {
+
+int try_magic(unsigned char *magic, int argc, char *argv[]) {
     // child is chals
 	pid_t child;
-	if(argc < 2) {
-		fprintf(stderr, "usage: %s program [args ...]\n", argv[0]);
-		return -1;
-	}
 
 	if((child = fork()) < 0) errquit("fork");
 	
@@ -41,9 +37,8 @@ main(int argc, char *argv[]) {
         unsigned char *ptr = (unsigned char *) &ret;  // [TODO]
 
         // char magic[11] = { '1', '1', '1', '1', '1', '1', '1', '1', '1', '1', '\0' };
-        unsigned char magic[] = { 0x31, 0x31, 0x31, 0x31, 0x31, 0x31, 0x31, 0x31, 0x31, 0x31 };
+        // unsigned char magic[] = { 0x31, 0x31, 0x31, 0x31, 0x31, 0x31, 0x31, 0x31, 0x31, 0x31 };
         unsigned long *magic_ptr = (unsigned long *)magic;  //[TODO] need magic_ptr to read content after magic size
-        unsigned long tmp;
 
         // get magic address from <main>
         // after 1st int3(CC)
@@ -62,7 +57,7 @@ main(int argc, char *argv[]) {
         //      3rd int3(CC) = 4th stop
 		while (WIFSTOPPED(wait_status)) {
 			counter++;
-            printf("counter: %lld\n", counter);
+            // printf("counter: %lld\n", counter);
 
             // after first int3(CC)
             if(counter == 2) {
@@ -90,37 +85,38 @@ main(int argc, char *argv[]) {
                     //     rip,
                     //     ptr[0], ptr[1], ptr[2], ptr[3], ptr[4], ptr[5], ptr[6], ptr[7]);
                 }
-                printf("rax: 0x%llx\n", rax);
+                // printf("rax: 0x%llx\n", rax);
 
                 // print the magic before memset
-                printf("magic before memset:\n");
-                ret = ptrace(PTRACE_PEEKTEXT, child, rax, 0);
-                fprintf(stderr, "0x%llx: %2.2x %2.2x %2.2x %2.2x %2.2x %2.2x %2.2x %2.2x\n",
-                    rax,
-                    ptr[0], ptr[1], ptr[2], ptr[3], ptr[4], ptr[5], ptr[6], ptr[7]);
+                // printf("magic before memset:\n");
+                // ret = ptrace(PTRACE_PEEKTEXT, child, rax, 0);
+                // fprintf(stderr, "0x%llx: %2.2x %2.2x %2.2x %2.2x %2.2x %2.2x %2.2x %2.2x\n",
+                //     rax,
+                //     ptr[0], ptr[1], ptr[2], ptr[3], ptr[4], ptr[5], ptr[6], ptr[7]);
                 
-                ret = ptrace(PTRACE_PEEKTEXT, child, rax+8, 0);
-                fprintf(stderr, "0x%llx: %2.2x %2.2x %2.2x %2.2x %2.2x %2.2x %2.2x %2.2x\n",
-                    rax+8,
-                    ptr[0], ptr[1], ptr[2], ptr[3], ptr[4], ptr[5], ptr[6], ptr[7]);
+                // ret = ptrace(PTRACE_PEEKTEXT, child, rax+8, 0);
+                // fprintf(stderr, "0x%llx: %2.2x %2.2x %2.2x %2.2x %2.2x %2.2x %2.2x %2.2x\n",
+                //     rax+8,
+                //     ptr[0], ptr[1], ptr[2], ptr[3], ptr[4], ptr[5], ptr[6], ptr[7]);
             }
 
+            // unsigned long tmp;
             // printf("size of unsigned long: %ld\n", sizeof(tmp));  // 8 bytes
             
             // after 2nd int3(CC) = 3rd stop
             // change magic value here
             if (counter == 3) {
                 // print the magic after memset -> should be 0x30 = 48(dec) = 0(ASCII)
-                printf("magic after memset:\n");
-                ret = ptrace(PTRACE_PEEKTEXT, child, rax, 0);
-                fprintf(stderr, "0x%llx: %2.2x %2.2x %2.2x %2.2x %2.2x %2.2x %2.2x %2.2x\n",
-                    rax,
-                    ptr[0], ptr[1], ptr[2], ptr[3], ptr[4], ptr[5], ptr[6], ptr[7]);
+                // printf("magic after memset:\n");
+                // ret = ptrace(PTRACE_PEEKTEXT, child, rax, 0);
+                // fprintf(stderr, "0x%llx: %2.2x %2.2x %2.2x %2.2x %2.2x %2.2x %2.2x %2.2x\n",
+                //     rax,
+                //     ptr[0], ptr[1], ptr[2], ptr[3], ptr[4], ptr[5], ptr[6], ptr[7]);
                 
-                ret = ptrace(PTRACE_PEEKTEXT, child, rax+8, 0);
-                fprintf(stderr, "0x%llx: %2.2x %2.2x %2.2x %2.2x %2.2x %2.2x %2.2x %2.2x\n",
-                    rax+8,
-                    ptr[0], ptr[1], ptr[2], ptr[3], ptr[4], ptr[5], ptr[6], ptr[7]);
+                // ret = ptrace(PTRACE_PEEKTEXT, child, rax+8, 0);
+                // fprintf(stderr, "0x%llx: %2.2x %2.2x %2.2x %2.2x %2.2x %2.2x %2.2x %2.2x\n",
+                //     rax+8,
+                //     ptr[0], ptr[1], ptr[2], ptr[3], ptr[4], ptr[5], ptr[6], ptr[7]);
 
                 
                 // POKETEXT
@@ -129,28 +125,89 @@ main(int argc, char *argv[]) {
 
                 magic_ptr = (unsigned long *)magic;
                 // ret = ptrace(PTRACE_POKETEXT, child, rax+8, *(magic_ptr+8));
+                ret = ptrace(PTRACE_PEEKTEXT, child, rax+8, 0);  // for next PTRACE_POKETEXT ret use
                 ret = ptrace(PTRACE_POKETEXT, child, rax+8, ((ret & 0xffffffffffff0000) | (*(magic_ptr + 1))));  // +1 is +8 byte(1 unit)
                 if(ret != 0 ) errquit("POKETEXT");
 
                 // PEEKTEXT again after modify
-                printf("after modify magic by ourselves, PEEKTEXT again\n");
-                ret = ptrace(PTRACE_PEEKTEXT, child, rax, 0);
-                fprintf(stderr, "0x%llx: %2.2x %2.2x %2.2x %2.2x %2.2x %2.2x %2.2x %2.2x\n",
-                    rax,
-                    ptr[0], ptr[1], ptr[2], ptr[3], ptr[4], ptr[5], ptr[6], ptr[7]);
+                // printf("after modify magic by ourselves, PEEKTEXT again\n");
+                // ret = ptrace(PTRACE_PEEKTEXT, child, rax, 0);
+                // fprintf(stderr, "0x%llx: %2.2x %2.2x %2.2x %2.2x %2.2x %2.2x %2.2x %2.2x\n",
+                //     rax,
+                //     ptr[0], ptr[1], ptr[2], ptr[3], ptr[4], ptr[5], ptr[6], ptr[7]);
                 
-                ret = ptrace(PTRACE_PEEKTEXT, child, rax+8, 0);
-                fprintf(stderr, "0x%llx: %2.2x %2.2x %2.2x %2.2x %2.2x %2.2x %2.2x %2.2x\n",
-                    rax+8,
-                    ptr[0], ptr[1], ptr[2], ptr[3], ptr[4], ptr[5], ptr[6], ptr[7]);
+                // ret = ptrace(PTRACE_PEEKTEXT, child, rax+8, 0);
+                // fprintf(stderr, "0x%llx: %2.2x %2.2x %2.2x %2.2x %2.2x %2.2x %2.2x %2.2x\n",
+                //     rax+8,
+                //     ptr[0], ptr[1], ptr[2], ptr[3], ptr[4], ptr[5], ptr[6], ptr[7]);
+            }
+
+            if (counter == 6) {
+                // after oracle_get_flag();, get rax asap
+                if(ptrace(PTRACE_GETREGS, child, 0, &regs) == 0) {
+                    rax = regs.rax;
+                }
+                if(rax == 0) {  // success
+                    return 1;
+                }
             }
 
 			if(ptrace(PTRACE_CONT, child, 0, 0) < 0) errquit("ptrace@parent");
-            printf("after continue\n");
+            // printf("after continue\n");
 			if(waitpid(child, &wait_status, 0) < 0) errquit("waitpid");  // wait for next stop
 		}
-        printf("outside while");
-		fprintf(stderr, "## %lld instruction(s) executed\n", counter);
+
+
+
+        // printf("outside while");
+		// fprintf(stderr, "## %lld instruction(s) executed\n", counter);
 	}
-	return 0;
+
+    return 0;
 }
+
+
+void get_magic (int index, unsigned char* magic) {
+    // unsigned char* magic = new unsigned char[10] { 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30 };
+    int cnt = 0;
+    while(index > 0) {
+        if(index & 1)
+            magic[cnt] = 0x31;
+        
+        index >>= 1;  // index shift right 1 
+        cnt++;
+    }
+
+    // return magic;
+}
+
+int main(int argc, char *argv[]) {
+
+    if(argc < 2) {
+		fprintf(stderr, "usage: %s program [args ...]\n", argv[0]);
+		return -1;
+	}
+
+    // printf("2^10: %d\n", 2**10);
+
+    // unsigned char magic[] = { 0x31, 0x31, 0x31, 0x31, 0x31, 0x31, 0x31, 0x31, 0x31, 0x31 };
+
+    // int ret = try_magic(magic, argc, argv);
+
+    // for(int i = 0; i < 1024; i++) {  // 0 - 1023
+    for(int i = 0; i < 1024; i++) {  // 0 - 1023
+        // unsigned char magic[] = get_magic();
+        unsigned char magic[] = { 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30 };
+        get_magic(i, magic);
+        if(try_magic(magic, argc, argv) == 1) {
+            printf(" ===== try finish ===== ");
+            break;
+        }
+
+    }
+
+    // printf("ret of try_magic: %d\n", ret);
+
+    return 0;
+}
+
