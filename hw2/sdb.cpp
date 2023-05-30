@@ -139,15 +139,11 @@ void parse_elf(const string& command) {
         // cout << "buffer: " << buffer << endl;
         if(string(buffer).find(".text") != string::npos) {
             text_appear = 1;
-            // cout << "address: " << split_string_by_space(string(buffer))[4] << endl;
-            // code_end_address = stoul(split_string_by_space(string(buffer))[4], nullptr, 16);
             code_start_address = stoul(split_string_by_space(string(buffer))[4], nullptr, 16);
 
         } else if (text_appear == 1) {
             text_appear = 2;
-            // cout << "len: " << split_string_by_space(string(buffer))[0] << endl;
             code_end_address = code_start_address + stoul(split_string_by_space(string(buffer))[0], nullptr, 16);
-            // code_end_address += stoul(split_string_by_space(string(buffer))[0], nullptr, 16);
         }
     }
     pclose(pipe);
@@ -222,48 +218,12 @@ void set_break_point(const string &user_input) {
     // [remind] disasm cannot be 0xcc
     unsigned long peek_word = ptrace(PTRACE_PEEKTEXT, child, break_point_address, 0);
     if(errno != 0) errquit("PTRACE_PEEKTEXT");
-    // cout << "peek_word: " << hex << peek_word << dec << endl;
+
     break_point_archive[break_point_address] = static_cast<unsigned char>(peek_word & 0xff);
-    // cout << "break_point_archive[break_point_address]: " << hex << static_cast<int>(break_point_archive[break_point_address]) << dec << endl;
-    // cout << "(peek_word & 0xffffffffffffff00) | 0xcc): " << hex << ((peek_word & 0xffffffffffffff00) | 0xcc) << dec << endl;
-    // ret = ptrace(PTRACE_POKETEXT, child, break_point_address, (restore_byte & 0xffffffffffffff00) | 0xcc);
     if(ptrace(PTRACE_POKETEXT, child, break_point_address, (peek_word & 0xffffffffffffff00) | 0xcc) != 0 ) errquit("POKETEXT");
 
     cout << "** set a breakpoint at 0x" << hex << break_point_address << dec << "." << endl;
-
-    // peek_word = ptrace(PTRACE_PEEKTEXT, child, break_point_address, 0);
-    // cout << "peek_word: " << hex << peek_word << dec << endl;
-
-    // change it pack -> ok
-    // if(ptrace(PTRACE_POKETEXT, child, break_point_address, (peek_word & 0xffffffffffffff00) | break_point_archive[break_point_address]) != 0 ) errquit("POKETEXT");
-    // peek_word = ptrace(PTRACE_PEEKTEXT, child, break_point_address, 0);
-    // cout << "peek_word: " << hex << peek_word << dec << endl;
 }
-
-// void check_if_next_ins_is_breakpoint() {
-//     // if yes, run single step again
-//     cout << " *** 1 *** " << endl;
-//     cout << "child: " << child << endl;
-
-//     // seems like need to be seperate with the wait and check
-//     if(waitpid(child, &wait_status, 0) < 0) errquit("waitpid");
-//     if(ptrace(PTRACE_GETREGS, child, 0, &regs) == -1) errquit("PTRACE_GETREGS");
-
-//     if(break_point_archive.find(regs.rip) != break_point_archive.end()) {  // next step is breakpoint
-//         // single_step silently to hit breakpoint here
-//         // after hitting breakpoint, next action (check if hit breakpoint / restore breakpoint remain the same)
-//         if(ptrace(PTRACE_SINGLESTEP, child, 0, 0) < 0) errquit("PTRACE_SINGLESTEP");
-//     }
-    
-//     // renew status of regs
-//     cout << " *** 1 *** " << endl;
-
-//     if(ptrace(PTRACE_GETREGS, child, 0, &regs) == -1) errquit("PTRACE_GETREGS");
-//     cout << " *** 1 *** " << endl;
-
-
-//     return;
-// }
 
 
 int main(int argc, char *argv[]) {
@@ -305,12 +265,7 @@ int main(int argc, char *argv[]) {
             getline(cin, user_input);
 
             if (user_input == "si") {
-                // cout << "child: " << child << endl;
-                // if(ptrace(PTRACE_GETREGS, child, 0, &regs) == -1) errquit("PTRACE_GETREGS");
                 if(ptrace(PTRACE_SINGLESTEP, child, 0, 0) < 0) errquit("PTRACE_SINGLESTEP");
-                // cout << "child: " << child << endl;
-                // if(ptrace(PTRACE_GETREGS, child, 0, &regs) == -1) errquit("PTRACE_GETREGS");
-                // check_if_next_ins_is_breakpoint();
                 wait_and_refresh_status(true);
                 load_next_five_instruction();
 
