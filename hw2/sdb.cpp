@@ -21,9 +21,12 @@ void errquit(const char *msg) {
 	exit(-1);
 }
 
+unsigned long code_start_address, code_end_address;
 uint8_t* code;
 long code_size;
 map<unsigned long, unsigned char> break_point_archive;  // (address, 1 byte content)
+struct user_regs_struct regs;
+pid_t child;
 
 void load_code(char *argv[]) {
     // load code
@@ -57,7 +60,7 @@ void load_code(char *argv[]) {
 }
 
 
-void load_next_five_instruction (unsigned long rip, unsigned long code_end_address) {
+void load_next_five_instruction() {
     // using capstone
     static csh cshandle = 0;
 
@@ -67,7 +70,7 @@ void load_next_five_instruction (unsigned long rip, unsigned long code_end_addre
     size_t count;
     cs_insn *insn;
     // cout << "(rip - 0x400000): " << hex << (rip - 0x400000) << dec << endl;
-    count = cs_disasm(cshandle, code + (rip - 0x400000), code_size, rip, 5, &insn);  // code, sizeof code, start disasm addr, hm ins, disasm result memory pointer
+    count = cs_disasm(cshandle, code + (regs.rip - 0x400000), code_size, regs.rip, 5, &insn);  // code, sizeof code, start disasm addr, hm ins, disasm result memory pointer
     // cout << "disasm count: " << count << endl;
 
     if (count > 0) {
@@ -122,7 +125,7 @@ vector<string> split_string_by_space(const string& input) {
     return tokens;
 }
 
-void parse_elf(const string& command, unsigned long &code_start_address, unsigned long &code_end_address) {
+void parse_elf(const string& command) {
     char buffer[1024];
     string result;
     FILE* pipe = popen(command.c_str(), "r");
@@ -152,115 +155,177 @@ void parse_elf(const string& command, unsigned long &code_start_address, unsigne
     return;
 }
 
+
+void wait_and_refresh_status(bool is_si) {
+    int wait_status;
+    if(waitpid(child, &wait_status, 0) < 0) errquit("waitpid");
+
+    if (WIFSTOPPED(wait_status)) {
+        
+        if(is_si) {
+            if(ptrace(PTRACE_GETREGS, child, 0, &regs) == -1) errquit("PTRACE_GETREGS");
+
+            if(break_point_archive.find(regs.rip) != break_point_archive.end()) {  // next step is breakpoint
+                // single_step silently to hit breakpoint here
+                // after hitting breakpoint, next action (check if hit breakpoint / restore breakpoint remain the same)
+                if(ptrace(PTRACE_SINGLESTEP, child, 0, 0) < 0) errquit("PTRACE_SINGLESTEP");
+                if(waitpid(child, &wait_status, 0) < 0) errquit("waitpid");
+            }
+        }
+
+        // load new regs state
+        if(ptrace(PTRACE_GETREGS, child, 0, &regs) == -1) errquit("PTRACE_GETREGS");
+
+        // check if hit the break point
+        if(break_point_archive.find(regs.rip - 0x1) != break_point_archive.end()) {  // last stop is a breakpoint
+            unsigned long break_point_address = regs.rip - 0x1;
+            cout << "** hit a breakpoint 0x" << hex << break_point_address << hex << "." << endl;
+
+            // recover the breakpoint
+            unsigned long peek_word = ptrace(PTRACE_PEEKTEXT, child, break_point_address, 0);
+            if(errno != 0) errquit("PTRACE_PEEKTEXT");
+            // cout << "peek_word: " << hex << peek_word << dec << endl;
+
+            if(ptrace(PTRACE_POKETEXT, child, break_point_address, (peek_word & 0xffffffffffffff00) | break_point_archive[break_point_address]) != 0 ) errquit("POKETEXT");
+
+            peek_word = ptrace(PTRACE_PEEKTEXT, child, break_point_address, 0);
+            if(errno != 0) errquit("PTRACE_PEEKTEXT");
+            // cout << "peek_word: " << hex << peek_word << dec << endl;
+            // -> seems ok
+
+            // restore rip
+            regs.rip = regs.rip-1;
+            regs.rdx = regs.rax; // why
+            if(ptrace(PTRACE_SETREGS, child, 0, &regs) != 0) errquit("PTRACE_SETREGS");
+        }
+
+    } else {  // program exit
+        cout << "** the target program terminated." << endl;
+    	exit(0);
+    }
+
+    return;
+}
+
+
+void set_break_point(const string &user_input) {
+    unsigned long break_point_address = stoul(split_string_by_space(user_input)[1], nullptr, 16);
+    // check the break point range
+    if(break_point_address < code_start_address || break_point_address > code_end_address) {
+        cout << " * break point address out of range." << endl;
+        return;
+    }
+
+    // set break point
+    // -> overwrite the address's text to 0xcc and record the text
+    // 1. record text -> 2. overwrite the address's text to 0xcc -> 3. for future recover
+    // [remind] disasm cannot be 0xcc
+    unsigned long peek_word = ptrace(PTRACE_PEEKTEXT, child, break_point_address, 0);
+    if(errno != 0) errquit("PTRACE_PEEKTEXT");
+    // cout << "peek_word: " << hex << peek_word << dec << endl;
+    break_point_archive[break_point_address] = static_cast<unsigned char>(peek_word & 0xff);
+    // cout << "break_point_archive[break_point_address]: " << hex << static_cast<int>(break_point_archive[break_point_address]) << dec << endl;
+    // cout << "(peek_word & 0xffffffffffffff00) | 0xcc): " << hex << ((peek_word & 0xffffffffffffff00) | 0xcc) << dec << endl;
+    // ret = ptrace(PTRACE_POKETEXT, child, break_point_address, (restore_byte & 0xffffffffffffff00) | 0xcc);
+    if(ptrace(PTRACE_POKETEXT, child, break_point_address, (peek_word & 0xffffffffffffff00) | 0xcc) != 0 ) errquit("POKETEXT");
+
+    cout << "** set a breakpoint at 0x" << hex << break_point_address << dec << "." << endl;
+
+    // peek_word = ptrace(PTRACE_PEEKTEXT, child, break_point_address, 0);
+    // cout << "peek_word: " << hex << peek_word << dec << endl;
+
+    // change it pack -> ok
+    // if(ptrace(PTRACE_POKETEXT, child, break_point_address, (peek_word & 0xffffffffffffff00) | break_point_archive[break_point_address]) != 0 ) errquit("POKETEXT");
+    // peek_word = ptrace(PTRACE_PEEKTEXT, child, break_point_address, 0);
+    // cout << "peek_word: " << hex << peek_word << dec << endl;
+}
+
+// void check_if_next_ins_is_breakpoint() {
+//     // if yes, run single step again
+//     cout << " *** 1 *** " << endl;
+//     cout << "child: " << child << endl;
+
+//     // seems like need to be seperate with the wait and check
+//     if(waitpid(child, &wait_status, 0) < 0) errquit("waitpid");
+//     if(ptrace(PTRACE_GETREGS, child, 0, &regs) == -1) errquit("PTRACE_GETREGS");
+
+//     if(break_point_archive.find(regs.rip) != break_point_archive.end()) {  // next step is breakpoint
+//         // single_step silently to hit breakpoint here
+//         // after hitting breakpoint, next action (check if hit breakpoint / restore breakpoint remain the same)
+//         if(ptrace(PTRACE_SINGLESTEP, child, 0, 0) < 0) errquit("PTRACE_SINGLESTEP");
+//     }
+    
+//     // renew status of regs
+//     cout << " *** 1 *** " << endl;
+
+//     if(ptrace(PTRACE_GETREGS, child, 0, &regs) == -1) errquit("PTRACE_GETREGS");
+//     cout << " *** 1 *** " << endl;
+
+
+//     return;
+// }
+
+
 int main(int argc, char *argv[]) {
-	pid_t child;
 	if(argc < 2) {
 		fprintf(stderr, "usage: %s program [args ...]\n", argv[0]);
 		return -1;
 	}
+
 	if((child = fork()) < 0) errquit("fork");
-	if(child == 0) {
+	
+    if(child == 0) {
 		if(ptrace(PTRACE_TRACEME, 0, 0, 0) < 0) errquit("ptrace@child");
 		execvp(argv[1], argv+1);
 		errquit("execvp");
-	} else {
-		long long counter = 0LL;
+	
+    } else {
 		int wait_status;
 		if(waitpid(child, &wait_status, 0) < 0) errquit("waitpid");
 		ptrace(PTRACE_SETOPTIONS, child, 0, PTRACE_O_EXITKILL);
 
         // variable in while
         string user_input;
-        struct user_regs_struct regs;
-        unsigned long code_start_address, code_end_address;
-        parse_elf("readelf -S " + string(argv[1]), code_start_address, code_end_address);
+
+        // get code range address
+        parse_elf("readelf -S " + string(argv[1]));
+        
+        // load binary code put into disasm
         load_code(argv);
-		bool entry_point = true;
 
-        while (WIFSTOPPED(wait_status)) {
-			counter++;
+        // entry point prompt
+        if(ptrace(PTRACE_GETREGS, child, 0, &regs) == -1) errquit("PTRACE_GETREGS");
+        fprintf(stdout, "program '%s' loaded. entry point 0x%llx\n", argv[1], regs.rip);
+        load_next_five_instruction();
+
+        // get user input and act coresspondingly
+        while(true) {
+            cout << "(sdb) ";
             user_input = "";
+            getline(cin, user_input);
 
-            // [DONE] get register rip
-            if(ptrace(PTRACE_GETREGS, child, 0, &regs) == -1) perror("PTRACE_GETREGS");
+            if (user_input == "si") {
+                // cout << "child: " << child << endl;
+                // if(ptrace(PTRACE_GETREGS, child, 0, &regs) == -1) errquit("PTRACE_GETREGS");
+                if(ptrace(PTRACE_SINGLESTEP, child, 0, 0) < 0) errquit("PTRACE_SINGLESTEP");
+                // cout << "child: " << child << endl;
+                // if(ptrace(PTRACE_GETREGS, child, 0, &regs) == -1) errquit("PTRACE_GETREGS");
+                // check_if_next_ins_is_breakpoint();
+                wait_and_refresh_status(true);
+                load_next_five_instruction();
 
-            if(entry_point) {
-                fprintf(stdout, "program '%s' loaded. entry point 0x%llx\n", argv[1], regs.rip);
-                entry_point = false;
+            } else if (user_input == "cont") {
+                if(ptrace(PTRACE_CONT, child, 0, 0) < 0) errquit("PTRACE_CONT");
+                wait_and_refresh_status(false);
+                load_next_five_instruction();
+
+            } else if (user_input.substr(0, 6) == "break ") {
+                set_break_point(user_input);
+
+            } else {
+                cout << " * Undefined command: \"" + user_input + "\"." << endl;
             }
-
-            // [DONE] load next five instruction based on rip
-            load_next_five_instruction(regs.rip, code_end_address);
-
-            // [TODO] deal with user input and decide next step action
-            while(1) {  // wait until valid input
-                cout << "(sdb) ";
-                user_input = "";
-                getline(cin, user_input);
-                // cout << "user_input: " << user_input << endl;
-                // cout << "user_input len: " << user_input.length() << endl;
-                // cout << "user_input.substr(0, 6): " << user_input.substr(0, 6) << endl;
-
-
-                // [DONE] - support ins
-                //  1. si
-                //  2. cont
-                if (user_input == "si") {
-                    if(ptrace(PTRACE_SINGLESTEP, child, 0, 0) < 0) {
-                        perror("PTRACE_SINGLESTEP");
-                        // cs_close(&cshandle);
-                        return -2;
-                    }
-                    break;
-
-                } else if (user_input == "cont") {
-                    if(ptrace(PTRACE_CONT, child, 0, 0) < 0) {
-                        perror("PTRACE_CONT");
-                        // cs_close(&cshandle);
-                        return -2;
-                    }
-                    break;
-                
-                } else if (user_input.substr(0, 6) == "break ") {
-                    unsigned long break_point_address = stoul(split_string_by_space(user_input)[1], nullptr, 16);
-
-                    // check the break point range
-                    if(break_point_address < code_start_address || break_point_address > code_end_address) {
-                        cout << " * break point address out of range." << endl;
-                        continue;
-
-                    }
-
-                    // set break point
-                    // -> overwrite the address's text to 0xcc and record the text
-                    // 1. record text -> 2. overwrite the address's text to 0xcc -> 3. for future recover
-                    // [remind] disasm cannot be 0xcc
-                    unsigned long peek_word = ptrace(PTRACE_PEEKTEXT, child, break_point_address, 0);
-                    // cout << "peek_word: " << hex << peek_word << dec << endl;
-                    break_point_archive[break_point_address] = static_cast<unsigned char>(peek_word & 0xff);
-                    // cout << "break_point_archive[break_point_address]: " << hex << static_cast<int>(break_point_archive[break_point_address]) << dec << endl;
-                    // cout << "(peek_word & 0xffffffffffffff00) | 0xcc): " << hex << ((peek_word & 0xffffffffffffff00) | 0xcc) << dec << endl;
-                    // ret = ptrace(PTRACE_POKETEXT, child, break_point_address, (restore_byte & 0xffffffffffffff00) | 0xcc);
-                    if(ptrace(PTRACE_POKETEXT, child, break_point_address, (peek_word & 0xffffffffffffff00) | 0xcc) != 0 ) errquit("POKETEXT");
-
-                    cout << "** set a breakpoint at 0x" << hex << break_point_address << dec << "." << endl;
-
-                    // peek_word = ptrace(PTRACE_PEEKTEXT, child, break_point_address, 0);
-                    // cout << "peek_word: " << hex << peek_word << dec << endl;
-
-                    // change it pack -> ok
-                    // if(ptrace(PTRACE_POKETEXT, child, break_point_address, (peek_word & 0xffffffffffffff00) | break_point_archive[break_point_address]) != 0 ) errquit("POKETEXT");
-                    // peek_word = ptrace(PTRACE_PEEKTEXT, child, break_point_address, 0);
-                    // cout << "peek_word: " << hex << peek_word << dec << endl;
-
-                } else {
-                    cout << " * Undefined command: \"" + user_input + "\"." << endl;
-                }
-            }
-            
-            if(waitpid(child, &wait_status, 0) < 0) errquit("waitpid");        
         }
-		fprintf(stderr, "## %lld instruction(s) executed\n", counter);
 	}
 	return 0;
 }
