@@ -13,6 +13,7 @@
 #include <sstream>
 #include <vector>
 #include <map>
+#include <fstream>
 
 using namespace std;
 
@@ -21,7 +22,7 @@ void errquit(const char *msg) {
 	exit(-1);
 }
 
-unsigned long code_start_address, code_end_address;
+unsigned long code_start_address, code_end_address, base_address;
 uint8_t* code;
 long code_size;
 map<unsigned long, unsigned char> break_point_archive;  // (address, 1 byte content)
@@ -59,6 +60,19 @@ void load_code(char *argv[]) {
     fclose(code_file);
 }
 
+void load_base_address() {
+    ifstream proc_self_maps("/proc/self/maps");
+    if(proc_self_maps.is_open()) {
+        string first_line;
+        getline(proc_self_maps, first_line);
+        base_address = stoul(first_line.substr(0, first_line.find("-")), nullptr, 16);
+        proc_self_maps.close();
+    } else {
+        cerr << "Unable to open file: " << "/proc/self/maps" << '\n';
+    }
+    // cout << "base_address: " << hex << base_address << dec << endl;
+    return;
+}
 
 void load_next_five_instruction() {
     // using capstone
@@ -69,8 +83,7 @@ void load_next_five_instruction() {
 
     size_t count;
     cs_insn *insn;
-    // cout << "(rip - 0x400000): " << hex << (rip - 0x400000) << dec << endl;
-    count = cs_disasm(cshandle, code + (regs.rip - 0x400000), code_size, regs.rip, 5, &insn);  // code, sizeof code, start disasm addr, hm ins, disasm result memory pointer
+    count = cs_disasm(cshandle, code + (regs.rip - base_address), code_size, regs.rip, 5, &insn);  // code, sizeof code, start disasm addr, hm ins, disasm result memory pointer
     // cout << "disasm count: " << count << endl;
 
     if (count > 0) {
@@ -243,6 +256,9 @@ int main(int argc, char *argv[]) {
 		int wait_status;
 		if(waitpid(child, &wait_status, 0) < 0) errquit("waitpid");
 		ptrace(PTRACE_SETOPTIONS, child, 0, PTRACE_O_EXITKILL);
+
+        // load base address
+        load_base_address();
 
         // variable in while
         string user_input;
