@@ -191,7 +191,7 @@ void wait_and_refresh_status(bool is_si) {
 
             // restore rip
             regs.rip = regs.rip-1;
-            regs.rdx = regs.rax; // why
+            // regs.rdx = regs.rax; // why
             if(ptrace(PTRACE_SETREGS, child, 0, &regs) != 0) errquit("PTRACE_SETREGS");
         }
 
